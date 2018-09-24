@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import javax.servlet.Servlet;
 import javax.servlet.http.HttpServletRequest;
@@ -49,7 +50,9 @@ import org.springframework.boot.autoconfigure.template.TemplateAvailabilityProvi
 import org.springframework.boot.autoconfigure.template.TemplateAvailabilityProviders;
 import org.springframework.boot.autoconfigure.web.ResourceProperties;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
+import org.springframework.boot.autoconfigure.web.servlet.DispatcherServletPath;
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.WebMvcProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.ErrorPage;
 import org.springframework.boot.web.server.ErrorPageRegistrar;
@@ -89,17 +92,23 @@ import org.springframework.web.util.HtmlUtils;
 @ConditionalOnClass({ Servlet.class, DispatcherServlet.class })
 // Load before the main WebMvcAutoConfiguration so that the error View is available
 @AutoConfigureBefore(WebMvcAutoConfiguration.class)
-@EnableConfigurationProperties({ ServerProperties.class, ResourceProperties.class })
+@EnableConfigurationProperties({ ServerProperties.class, ResourceProperties.class,
+		WebMvcProperties.class })
 public class ErrorMvcAutoConfiguration {
 
 	private final ServerProperties serverProperties;
 
+	private final DispatcherServletPath dispatcherServletPath;
+
 	private final List<ErrorViewResolver> errorViewResolvers;
 
 	public ErrorMvcAutoConfiguration(ServerProperties serverProperties,
-			ObjectProvider<List<ErrorViewResolver>> errorViewResolversProvider) {
+			DispatcherServletPath dispatcherServletPath,
+			ObjectProvider<ErrorViewResolver> errorViewResolvers) {
 		this.serverProperties = serverProperties;
-		this.errorViewResolvers = errorViewResolversProvider.getIfAvailable();
+		this.dispatcherServletPath = dispatcherServletPath;
+		this.errorViewResolvers = errorViewResolvers.orderedStream()
+				.collect(Collectors.toList());
 	}
 
 	@Bean
@@ -118,7 +127,7 @@ public class ErrorMvcAutoConfiguration {
 
 	@Bean
 	public ErrorPageCustomizer errorPageCustomizer() {
-		return new ErrorPageCustomizer(this.serverProperties);
+		return new ErrorPageCustomizer(this.serverProperties, this.dispatcherServletPath);
 	}
 
 	@Bean
@@ -311,11 +320,13 @@ public class ErrorMvcAutoConfiguration {
 		@Override
 		public String resolvePlaceholder(String placeholderName) {
 			Expression expression = this.expressions.get(placeholderName);
-			return escape(expression == null ? null : expression.getValue(this.context));
+			Object expressionValue = (expression != null)
+					? expression.getValue(this.context) : null;
+			return escape(expressionValue);
 		}
 
 		private String escape(Object value) {
-			return HtmlUtils.htmlEscape(value == null ? null : value.toString());
+			return HtmlUtils.htmlEscape((value != null) ? value.toString() : null);
 		}
 
 	}
@@ -327,15 +338,18 @@ public class ErrorMvcAutoConfiguration {
 
 		private final ServerProperties properties;
 
-		protected ErrorPageCustomizer(ServerProperties properties) {
+		private final DispatcherServletPath dispatcherServletPath;
+
+		protected ErrorPageCustomizer(ServerProperties properties,
+				DispatcherServletPath dispatcherServletPath) {
 			this.properties = properties;
+			this.dispatcherServletPath = dispatcherServletPath;
 		}
 
 		@Override
 		public void registerErrorPages(ErrorPageRegistry errorPageRegistry) {
-			ErrorPage errorPage = new ErrorPage(
-					this.properties.getServlet().getServletPrefix()
-							+ this.properties.getError().getPath());
+			ErrorPage errorPage = new ErrorPage(this.dispatcherServletPath
+					.getRelativePath(this.properties.getError().getPath()));
 			errorPageRegistry.addErrorPages(errorPage);
 		}
 

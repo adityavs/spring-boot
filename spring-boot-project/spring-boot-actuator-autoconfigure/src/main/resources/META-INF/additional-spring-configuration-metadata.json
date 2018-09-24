@@ -192,37 +192,49 @@
       "name": "management.metrics.binders.files.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable files metrics.",
-      "defaultValue": true
-    },
-    {
-      "name": "management.metrics.binders.integration.enabled",
-      "type": "java.lang.Boolean",
-      "description": "Whether to enable Spring Integration metrics.",
-      "defaultValue": true
+      "defaultValue": true,
+      "deprecation": {
+        "replacement": "management.metrics.enable.process.files",
+        "reason": "Instead, filter 'process.files' metrics."
+      }
     },
     {
       "name": "management.metrics.binders.jvm.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable JVM metrics.",
-      "defaultValue": true
+      "defaultValue": true,
+      "deprecation": {
+        "replacement": "management.metrics.enable.jvm",
+        "reason": "Instead, disable JvmMetricsAutoConfiguration or filter 'jvm' metrics."
+      }
     },
     {
       "name": "management.metrics.binders.logback.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable Logback metrics.",
-      "defaultValue": true
+      "defaultValue": true,
+      "deprecation": {
+        "replacement": "management.metrics.enable.logback",
+        "reason": "Instead, disable LogbackMetricsAutoConfiguration or filter 'logback' metrics."
+      }
     },
     {
       "name": "management.metrics.binders.processor.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable processor metrics.",
-      "defaultValue": true
+      "defaultValue": true,
+      "deprecation": {
+        "reason": "Instead, filter 'system.cpu' and 'process.cpu' metrics."
+      }
     },
     {
       "name": "management.metrics.binders.uptime.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable uptime metrics.",
-      "defaultValue": true
+      "defaultValue": true,
+      "deprecation": {
+        "reason": "Instead, filter 'process.uptime' and 'process.start.time' metrics."
+      }
     },
     {
       "name": "management.metrics.export.jmx.enabled",
@@ -280,7 +292,10 @@
     },
     {
       "name": "management.metrics.export.statsd.queue-size",
-      "defaultValue": 2147483647
+      "defaultValue": 2147483647,
+      "deprecation": {
+        "level": "error"
+      }
     },
     {
       "name": "management.trace.http.enabled",
@@ -1228,6 +1243,12 @@
         "reason": "The security auto-configuration is no longer customizable. Provide your own WebSecurityConfigurer bean instead.",
         "level": "error"
       }
+    },
+    {
+      "name": "management.server.add-application-context-header",
+      "type": "java.lang.Boolean",
+      "description": "Add the \"X-Application-Context\" HTTP header in each response.",
+      "defaultValue": false
     },
     {
       "name": "management.shell.auth.jaas.domain",

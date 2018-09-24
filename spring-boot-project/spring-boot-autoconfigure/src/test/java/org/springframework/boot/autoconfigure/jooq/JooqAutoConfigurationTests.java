@@ -16,11 +16,14 @@
 
 package org.springframework.boot.autoconfigure.jooq;
 
+import java.util.concurrent.Executor;
+
 import javax.sql.DataSource;
 
 import org.jooq.DSLContext;
 import org.jooq.ExecuteListener;
 import org.jooq.ExecuteListenerProvider;
+import org.jooq.ExecutorProvider;
 import org.jooq.Record;
 import org.jooq.RecordListener;
 import org.jooq.RecordListenerProvider;
@@ -30,6 +33,8 @@ import org.jooq.RecordType;
 import org.jooq.RecordUnmapper;
 import org.jooq.RecordUnmapperProvider;
 import org.jooq.SQLDialect;
+import org.jooq.TransactionListener;
+import org.jooq.TransactionListenerProvider;
 import org.jooq.TransactionalRunnable;
 import org.jooq.VisitListener;
 import org.jooq.VisitListenerProvider;
@@ -56,6 +61,7 @@ import static org.junit.Assert.fail;
  * @author Phillip Webb
  * @author Andy Wilkinson
  * @author Stephane Nicoll
+ * @author Dmytro Nosan
  */
 public class JooqAutoConfigurationTests {
 
@@ -137,18 +143,23 @@ public class JooqAutoConfigurationTests {
 		this.contextRunner.withUserConfiguration(JooqDataSourceConfiguration.class,
 				TxManagerConfiguration.class, TestRecordMapperProvider.class,
 				TestRecordUnmapperProvider.class, TestRecordListenerProvider.class,
-				TestExecuteListenerProvider.class, TestVisitListenerProvider.class)
+				TestExecuteListenerProvider.class, TestVisitListenerProvider.class,
+				TestTransactionListenerProvider.class, TestExecutorProvider.class)
 				.run((context) -> {
 					DSLContext dsl = context.getBean(DSLContext.class);
 					assertThat(dsl.configuration().recordMapperProvider().getClass())
 							.isEqualTo(TestRecordMapperProvider.class);
 					assertThat(dsl.configuration().recordUnmapperProvider().getClass())
 							.isEqualTo(TestRecordUnmapperProvider.class);
+					assertThat(dsl.configuration().executorProvider().getClass())
+							.isEqualTo(TestExecutorProvider.class);
 					assertThat(dsl.configuration().recordListenerProviders().length)
 							.isEqualTo(1);
 					assertThat(dsl.configuration().executeListenerProviders().length)
 							.isEqualTo(2);
 					assertThat(dsl.configuration().visitListenerProviders().length)
+							.isEqualTo(1);
+					assertThat(dsl.configuration().transactionListenerProviders().length)
 							.isEqualTo(1);
 				});
 	}
@@ -268,6 +279,25 @@ public class JooqAutoConfigurationTests {
 
 		@Override
 		public VisitListener provide() {
+			return null;
+		}
+
+	}
+
+	protected static class TestTransactionListenerProvider
+			implements TransactionListenerProvider {
+
+		@Override
+		public TransactionListener provide() {
+			return null;
+		}
+
+	}
+
+	protected static class TestExecutorProvider implements ExecutorProvider {
+
+		@Override
+		public Executor provide() {
 			return null;
 		}
 

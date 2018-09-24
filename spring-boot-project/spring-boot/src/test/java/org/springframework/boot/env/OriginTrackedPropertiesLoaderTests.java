@@ -92,7 +92,7 @@ public class OriginTrackedPropertiesLoaderTests {
 
 	@Test
 	public void getMalformedUnicodeProperty() throws Exception {
-		// gh-2716
+		// gh-12716
 		this.thrown.expect(IllegalStateException.class);
 		this.thrown.expectMessage("Malformed \\uxxxx encoding");
 		new OriginTrackedPropertiesLoader(new ClassPathResource(
@@ -248,8 +248,14 @@ public class OriginTrackedPropertiesLoaderTests {
 		assertThat(getValue(value)).isEqualTo("æ×ÈÅÞßáñÀÿ");
 	}
 
+	@Test
+	public void getPropertyWithTrailingSpace() {
+		OriginTrackedValue value = this.properties.get("test-with-trailing-space");
+		assertThat(getValue(value)).isEqualTo("trailing ");
+	}
+
 	private Object getValue(OriginTrackedValue value) {
-		return (value == null ? null : value.getValue());
+		return (value != null) ? value.getValue() : null;
 	}
 
 	private String getLocation(OriginTrackedValue value) {

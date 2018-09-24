@@ -29,6 +29,7 @@ import org.quartz.JobExecutionContext;
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
 import org.quartz.SimpleScheduleBuilder;
+import org.quartz.SimpleTrigger;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 import org.quartz.TriggerKey;
@@ -36,6 +37,7 @@ import org.quartz.impl.calendar.MonthlyCalendar;
 import org.quartz.impl.calendar.WeeklyCalendar;
 import org.quartz.simpl.RAMJobStore;
 
+import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
@@ -53,6 +55,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.quartz.LocalDataSourceJobStore;
 import org.springframework.scheduling.quartz.QuartzJobBean;
+import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 import org.springframework.util.Assert;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,21 +90,24 @@ public class QuartzAutoConfigurationTests {
 
 	@Test
 	public void withDataSourceUseMemoryByDefault() {
-		this.contextRunner.withConfiguration(AutoConfigurations.of(
-				DataSourceAutoConfiguration.class,
-				DataSourceTransactionManagerAutoConfiguration.class)).run((context) -> {
-			assertThat(context).hasSingleBean(Scheduler.class);
-			Scheduler scheduler = context.getBean(Scheduler.class);
-			assertThat(scheduler.getMetaData().getJobStoreClass())
-					.isAssignableFrom(RAMJobStore.class);
-		});
+		this.contextRunner
+				.withConfiguration(
+						AutoConfigurations.of(DataSourceAutoConfiguration.class,
+								DataSourceTransactionManagerAutoConfiguration.class))
+				.run((context) -> {
+					assertThat(context).hasSingleBean(Scheduler.class);
+					Scheduler scheduler = context.getBean(Scheduler.class);
+					assertThat(scheduler.getMetaData().getJobStoreClass())
+							.isAssignableFrom(RAMJobStore.class);
+				});
 	}
 
 	@Test
 	public void withDataSource() {
 		this.contextRunner.withUserConfiguration(QuartzJobsConfiguration.class)
-				.withConfiguration(AutoConfigurations.of(DataSourceAutoConfiguration.class,
-						DataSourceTransactionManagerAutoConfiguration.class))
+				.withConfiguration(
+						AutoConfigurations.of(DataSourceAutoConfiguration.class,
+								DataSourceTransactionManagerAutoConfiguration.class))
 				.withPropertyValues("spring.quartz.job-store-type=jdbc")
 				.run(assertDataSourceJobStore("dataSource"));
 	}
@@ -109,8 +115,8 @@ public class QuartzAutoConfigurationTests {
 	@Test
 	public void withDataSourceNoTransactionManager() {
 		this.contextRunner.withUserConfiguration(QuartzJobsConfiguration.class)
-				.withConfiguration(AutoConfigurations.of(
-						DataSourceAutoConfiguration.class))
+				.withConfiguration(
+						AutoConfigurations.of(DataSourceAutoConfiguration.class))
 				.withPropertyValues("spring.quartz.job-store-type=jdbc")
 				.run(assertDataSourceJobStore("dataSource"));
 	}
@@ -131,13 +137,13 @@ public class QuartzAutoConfigurationTests {
 			Scheduler scheduler = context.getBean(Scheduler.class);
 			assertThat(scheduler.getMetaData().getJobStoreClass())
 					.isAssignableFrom(LocalDataSourceJobStore.class);
-			JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getBean(
-					datasourceName, DataSource.class));
+			JdbcTemplate jdbcTemplate = new JdbcTemplate(
+					context.getBean(datasourceName, DataSource.class));
 			assertThat(jdbcTemplate.queryForObject(
 					"SELECT COUNT(*) FROM QRTZ_JOB_DETAILS", Integer.class)).isEqualTo(2);
 			assertThat(jdbcTemplate.queryForObject(
 					"SELECT COUNT(*) FROM QRTZ_SIMPLE_TRIGGERS", Integer.class))
-					.isEqualTo(0);
+							.isEqualTo(0);
 		};
 	}
 
@@ -152,6 +158,21 @@ public class QuartzAutoConfigurationTests {
 					assertThat(scheduler.getMetaData().getThreadPoolSize()).isEqualTo(50);
 					Executor executor = context.getBean(Executor.class);
 					verifyZeroInteractions(executor);
+				});
+	}
+
+	@Test
+	public void withOverwriteExistingJobs() {
+		this.contextRunner.withUserConfiguration(OverwriteTriggerConfiguration.class)
+				.withPropertyValues("spring.quartz.overwrite-existing-jobs=true")
+				.run((context) -> {
+					assertThat(context).hasSingleBean(Scheduler.class);
+					Scheduler scheduler = context.getBean(Scheduler.class);
+					Trigger fooTrigger = scheduler
+							.getTrigger(TriggerKey.triggerKey("fooTrigger"));
+					assertThat(fooTrigger).isNotNull();
+					assertThat(((SimpleTrigger) fooTrigger).getRepeatInterval())
+							.isEqualTo(30000);
 				});
 	}
 
@@ -185,8 +206,9 @@ public class QuartzAutoConfigurationTests {
 
 	@Test
 	public void withQuartzProperties() {
-		this.contextRunner.withPropertyValues(
-				"spring.quartz.properties.org.quartz.scheduler.instanceId=FOO")
+		this.contextRunner
+				.withPropertyValues(
+						"spring.quartz.properties.org.quartz.scheduler.instanceId=FOO")
 				.run((context) -> {
 					assertThat(context).hasSingleBean(Scheduler.class);
 					Scheduler scheduler = context.getBean(Scheduler.class);
@@ -204,7 +226,85 @@ public class QuartzAutoConfigurationTests {
 				});
 	}
 
+	@Test
+	public void validateDefaultProperties() {
+		this.contextRunner.withUserConfiguration(ManualSchedulerConfiguration.class)
+				.run((context) -> {
+					assertThat(context).hasSingleBean(SchedulerFactoryBean.class);
+					SchedulerFactoryBean schedulerFactory = context
+							.getBean(SchedulerFactoryBean.class);
+					DirectFieldAccessor dfa = new DirectFieldAccessor(schedulerFactory);
+					QuartzProperties properties = new QuartzProperties();
+					assertThat(properties.isAutoStartup())
+							.isEqualTo(schedulerFactory.isAutoStartup());
+					assertThat((int) properties.getStartupDelay().getSeconds())
+							.isEqualTo(dfa.getPropertyValue("startupDelay"));
+					assertThat(properties.isWaitForJobsToCompleteOnShutdown()).isEqualTo(
+							dfa.getPropertyValue("waitForJobsToCompleteOnShutdown"));
+					assertThat(properties.isOverwriteExistingJobs())
+							.isEqualTo(dfa.getPropertyValue("overwriteExistingJobs"));
 
+				});
+
+	}
+
+	@Test
+	public void withCustomConfiguration() {
+		this.contextRunner.withPropertyValues("spring.quartz.auto-startup=false",
+				"spring.quartz.startup-delay=1m",
+				"spring.quartz.wait-for-jobs-to-complete-on-shutdown=true",
+				"spring.quartz.overwrite-existing-jobs=true").run((context) -> {
+					assertThat(context).hasSingleBean(SchedulerFactoryBean.class);
+					SchedulerFactoryBean schedulerFactory = context
+							.getBean(SchedulerFactoryBean.class);
+					DirectFieldAccessor dfa = new DirectFieldAccessor(schedulerFactory);
+					assertThat(schedulerFactory.isAutoStartup()).isFalse();
+					assertThat(dfa.getPropertyValue("startupDelay")).isEqualTo(60);
+					assertThat(dfa.getPropertyValue("waitForJobsToCompleteOnShutdown"))
+							.isEqualTo(true);
+					assertThat(dfa.getPropertyValue("overwriteExistingJobs"))
+							.isEqualTo(true);
+				});
+	}
+
+	@Test
+	public void schedulerNameWithDedicatedProperty() {
+		this.contextRunner
+				.withPropertyValues("spring.quartz.scheduler-name=testScheduler")
+				.run(assertSchedulerName("testScheduler"));
+	}
+
+	@Test
+	public void schedulerNameWithQuartzProperty() {
+		this.contextRunner.withPropertyValues(
+				"spring.quartz.properties.org.quartz.scheduler.instanceName=testScheduler")
+				.run(assertSchedulerName("testScheduler"));
+	}
+
+	@Test
+	public void schedulerNameWithDedicatedPropertyTakesPrecedence() {
+		this.contextRunner.withPropertyValues(
+				"spring.quartz.scheduler-name=specificTestScheduler",
+				"spring.quartz.properties.org.quartz.scheduler.instanceName=testScheduler")
+				.run(assertSchedulerName("specificTestScheduler"));
+	}
+
+	@Test
+	public void schedulerNameUseBeanNameByDefault() {
+		this.contextRunner.withPropertyValues()
+				.run(assertSchedulerName("quartzScheduler"));
+	}
+
+	private ContextConsumer<AssertableApplicationContext> assertSchedulerName(
+			String schedulerName) {
+		return (context) -> {
+			assertThat(context).hasSingleBean(SchedulerFactoryBean.class);
+			SchedulerFactoryBean schedulerFactory = context
+					.getBean(SchedulerFactoryBean.class);
+			DirectFieldAccessor dfa = new DirectFieldAccessor(schedulerFactory);
+			assertThat(dfa.getPropertyValue("schedulerName")).isEqualTo(schedulerName);
+		};
+	}
 
 	@Import(ComponentThatUsesScheduler.class)
 	@Configuration
@@ -250,6 +350,21 @@ public class QuartzAutoConfigurationTests {
 	}
 
 	@Configuration
+	@Import(QuartzFullConfiguration.class)
+	protected static class OverwriteTriggerConfiguration extends BaseQuartzConfiguration {
+
+		@Bean
+		public Trigger anotherFooTrigger(JobDetail fooJob) {
+			SimpleScheduleBuilder scheduleBuilder = SimpleScheduleBuilder.simpleSchedule()
+					.withIntervalInSeconds(30).repeatForever();
+
+			return TriggerBuilder.newTrigger().forJob(fooJob).withIdentity("fooTrigger")
+					.withSchedule(scheduleBuilder).build();
+		}
+
+	}
+
+	@Configuration
 	protected static class QuartzCalendarsConfiguration extends BaseQuartzConfiguration {
 
 		@Bean
@@ -281,6 +396,16 @@ public class QuartzAutoConfigurationTests {
 		public SchedulerFactoryBeanCustomizer customizer() {
 			return (schedulerFactoryBean) -> schedulerFactoryBean
 					.setSchedulerName("fooScheduler");
+		}
+
+	}
+
+	@Configuration
+	protected static class ManualSchedulerConfiguration {
+
+		@Bean
+		public SchedulerFactoryBean quartzScheduler() {
+			return new SchedulerFactoryBean();
 		}
 
 	}

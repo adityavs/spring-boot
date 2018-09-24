@@ -55,6 +55,8 @@ import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
 import javax.servlet.GenericServlet;
 import javax.servlet.ServletContext;
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
@@ -118,6 +120,7 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -302,9 +305,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 	public void multipleConfigurations() throws Exception {
 		AbstractServletWebServerFactory factory = getFactory();
 		ServletContextInitializer[] initializers = new ServletContextInitializer[6];
-		for (int i = 0; i < initializers.length; i++) {
-			initializers[i] = mock(ServletContextInitializer.class);
-		}
+		Arrays.setAll(initializers, (i) -> mock(ServletContextInitializer.class));
 		factory.setInitializers(Arrays.asList(initializers[2], initializers[3]));
 		factory.addInitializers(initializers[4], initializers[5]);
 		this.webServer = factory.getWebServer(initializers[0], initializers[1]);
@@ -423,7 +424,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer(registration);
 		this.webServer.start();
 		TrustStrategy trustStrategy = new SerialNumberValidatingTrustSelfSignedStrategy(
-				"77e7c302");
+				"3a3aaec8");
 		SSLContext sslContext = new SSLContextBuilder()
 				.loadTrustMaterial(null, trustStrategy).build();
 		HttpClient httpClient = HttpClients.custom()
@@ -555,7 +556,8 @@ public abstract class AbstractServletWebServerFactoryTests {
 			throws Exception {
 		AbstractServletWebServerFactory factory = getFactory();
 		addTestTxtFile(factory);
-		factory.setSsl(getSsl(ClientAuth.WANT, "password", "classpath:test.jks"));
+		factory.setSsl(getSsl(ClientAuth.WANT, "password", "classpath:test.jks", null,
+				new String[] { "TLSv1.2" }, null));
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
@@ -619,8 +621,8 @@ public abstract class AbstractServletWebServerFactoryTests {
 				httpClient);
 		assertThat(getResponse(getLocalUrl("https", "/test.txt"), requestFactory))
 				.isEqualTo("test");
-		verify(sslStoreProvider).getKeyStore();
-		verify(sslStoreProvider).getTrustStore();
+		verify(sslStoreProvider, atLeastOnce()).getKeyStore();
+		verify(sslStoreProvider, atLeastOnce()).getTrustStore();
 	}
 
 	@Test
@@ -689,7 +691,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 	protected void testRestrictedSSLProtocolsAndCipherSuites(String[] protocols,
 			String[] ciphers) throws Exception {
 		AbstractServletWebServerFactory factory = getFactory();
-		factory.setSsl(getSsl(null, "password", "src/test/resources/test.jks", null,
+		factory.setSsl(getSsl(null, "password", "src/test/resources/restricted.jks", null,
 				protocols, ciphers));
 		this.webServer = factory.getWebServer(
 				new ServletRegistrationBean<>(new ExampleServlet(true, false), "/hello"));
@@ -709,7 +711,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 	}
 
 	private String getStoreType(String keyStore) {
-		return (keyStore.endsWith(".p12") ? "pkcs12" : null);
+		return keyStore.endsWith(".p12") ? "pkcs12" : null;
 	}
 
 	@Test
@@ -865,8 +867,8 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		Map<String, String> configuredMimeMappings = getActualMimeMappings();
 		Collection<MimeMappings.Mapping> expectedMimeMappings = getExpectedMimeMappings();
-		configuredMimeMappings.forEach((key, value) -> assertThat(expectedMimeMappings).
-				contains(new MimeMappings.Mapping(key, value)));
+		configuredMimeMappings.forEach((key, value) -> assertThat(expectedMimeMappings)
+				.contains(new MimeMappings.Mapping(key, value)));
 		for (MimeMappings.Mapping mapping : expectedMimeMappings) {
 			assertThat(configuredMimeMappings).containsEntry(mapping.getExtension(),
 					mapping.getMimeType());
@@ -1035,6 +1037,17 @@ public abstract class AbstractServletWebServerFactoryTests {
 		assertThat(servletContext.getSessionCookieConfig().isHttpOnly()).isTrue();
 		assertThat(servletContext.getSessionCookieConfig().isSecure()).isTrue();
 		assertThat(servletContext.getSessionCookieConfig().getMaxAge()).isEqualTo(60);
+	}
+
+	@Test
+	public void servletContextListenerContextDestroyedIsCalledWhenContainerIsStopped()
+			throws Exception {
+		ServletContextListener listener = mock(ServletContextListener.class);
+		this.webServer = getFactory()
+				.getWebServer((servletContext) -> servletContext.addListener(listener));
+		this.webServer.start();
+		this.webServer.stop();
+		verify(listener).contextDestroyed(any(ServletContextEvent.class));
 	}
 
 	protected abstract void addConnector(int port,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import static org.mockito.Mockito.mock;
  *
  * @author Phillip Webb
  * @author Madhura Bhave
+ * @author Fahim Farook
  */
 public class SpringIterableConfigurationPropertySourceTests {
 
@@ -157,8 +158,22 @@ public class SpringIterableConfigurationPropertySourceTests {
 				.isEqualTo(ConfigurationPropertyState.ABSENT);
 	}
 
+	@Test
+	public void propertySourceKeyDataChangeInvalidatesCache() {
+		// gh-13344
+		Map<String, Object> map = new LinkedHashMap<>();
+		map.put("key1", "value1");
+		map.put("key2", "value2");
+		EnumerablePropertySource<?> source = new MapPropertySource("test", map);
+		SpringIterableConfigurationPropertySource adapter = new SpringIterableConfigurationPropertySource(
+				source, DefaultPropertyMapper.INSTANCE);
+		assertThat(adapter.stream().count()).isEqualTo(2);
+		map.put("key3", "value3");
+		assertThat(adapter.stream().count()).isEqualTo(3);
+	}
+
 	/**
-	 * Test {@link PropertySource} that's also a {@link OriginLookup}.
+	 * Test {@link PropertySource} that's also an {@link OriginLookup}.
 	 */
 	private static class OriginCapablePropertySource<T>
 			extends EnumerablePropertySource<T> implements OriginLookup<String> {
